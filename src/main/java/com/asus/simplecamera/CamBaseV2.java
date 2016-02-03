@@ -10,7 +10,6 @@ import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureRequest;
-import android.hardware.camera2.params.StreamConfigurationMap;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.util.Log;
@@ -18,7 +17,6 @@ import android.util.Size;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
-import android.view.View;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
 
@@ -44,8 +42,9 @@ public class CamBaseV2 {
     private boolean mIsPreviewing = false;
     private LinearLayout mRootView = null;
     private Size mPreviewSize = null;
-    private SurfaceView mSurfaceView = null;
-    private SurfaceHolder mSurfaceHolder = null;
+    private SurfaceView mPreviewSurfaceView = null;
+    private SurfaceHolder mPreviewSurfaceHolder = null;
+    private boolean mIsFullDeviceHeight = true;
 
     public CamBaseV2(Activity app, LinearLayout rootView) {
         mApp = app;
@@ -70,6 +69,7 @@ public class CamBaseV2 {
         Log.e(TAG, "LifeCycle, onActivityPause");
         releaseCamera();
         releaseCameraThread();
+        releaseSurfaceView();
         Log.e(TAG, "LifeCycle, onActivityPause done");
     }
 
@@ -89,9 +89,6 @@ public class CamBaseV2 {
             mCamera.close();
             mCamera = null;
         }
-        if (mPreviewSurface != null) {
-            mPreviewSurface = null;
-        }
     }
 
     private void releaseCameraThread() {
@@ -104,17 +101,23 @@ public class CamBaseV2 {
         }
     }
 
+    private void releaseSurfaceView() {
+        if (mPreviewSurface != null) {
+            mRootView.removeView(mPreviewSurfaceView);
+            mPreviewSurfaceHolder = null;
+            mPreviewSurface = null;
+        }
+    }
+
     private void openCamera() {
         mCameraManager = (CameraManager) mApp.getSystemService(Context.CAMERA_SERVICE);
         try {
             mCameraId = mCameraManager.getCameraIdList();
             mCameraCharacteristics = mCameraManager.getCameraCharacteristics(mCameraId[0]);
-            mPreviewSize = getPreviewSize();
-            mSurfaceView = new SurfaceView(mApp);
-            mSurfaceView.setLayoutParams(new ViewGroup.LayoutParams(mPreviewSize.getWidth(), mPreviewSize.getHeight()));
-            mSurfaceHolder = mSurfaceView.getHolder();
-            mSurfaceHolder.addCallback(mSurfaceHolderCallback);
-            mRootView.addView(mSurfaceView);
+
+            // Because camera2.0 only can control view size.
+            // So we need to dynamic create view to fit sensor size.
+            createSurfaceView(mRootView);
             Log.e(TAG, "camera open begin");
             mCameraManager.openCamera(mCameraId[0], mCameraDeviceStateCallback, mCameraHandler);
         } catch (CameraAccessException e) {
@@ -124,32 +127,55 @@ public class CamBaseV2 {
         }
     }
 
-    private Size getPreviewSize(){
-        Rect activeArea = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
-//        int width = activeArea.width();
-//        int height = activeArea.height();
-        int width = activeArea.height();
-        int height = activeArea.width();
-        Log.e(TAG, width + " AAAAAAAAAAAAAA " + height);
-        Point deviceSize = new Point();
-        mApp.getWindowManager().getDefaultDisplay().getSize(deviceSize);
-        Log.e(TAG, deviceSize.x + " AAAAAAAAAAAAAA " + deviceSize.y);
-        if(deviceSize.x > deviceSize.y){
+    private void createSurfaceView(LinearLayout rootLayout) {
+        mPreviewSize = getPreviewSize();
+        mPreviewSurfaceView = new SurfaceView(mApp);
+        mPreviewSurfaceView.setLayoutParams(new ViewGroup.LayoutParams(mPreviewSize.getWidth(), mPreviewSize.getHeight()));
+        mPreviewSurfaceHolder = mPreviewSurfaceView.getHolder();
+        mPreviewSurfaceHolder.addCallback(mSurfaceHolderCallback);
+        rootLayout.addView(mPreviewSurfaceView);
+    }
 
-        } else {
-            height = 2392;
-            width = 2392 * 3120 / 4208;
+    private Size getPreviewSize() {
+        Point screenSize = new Point();
+        mApp.getWindowManager().getDefaultDisplay().getSize(screenSize);
+        Rect activeArea = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+        int sensorOrientation = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
+        int sensorWidth, sensorHeight, previewWidth, previewHeight;
+        switch (sensorOrientation) {
+            case 90:
+            case 180:
+                sensorWidth = activeArea.height();
+                sensorHeight = activeArea.width();
+                break;
+            case 270:
+            case 0:
+            default:
+                sensorWidth = activeArea.width();
+                sensorHeight = activeArea.height();
+                break;
         }
-        Size previewSize = new Size(width, height);
-        return previewSize;
+        Log.i(TAG, "Sensor Orientation angle:" + sensorOrientation);
+        Log.i(TAG, "Sensor Width/Height : " + sensorWidth + "/" + sensorHeight);
+        Log.i(TAG, "Screen Width/Height : " + screenSize.x + "/" + screenSize.y);
+        if (mIsFullDeviceHeight) {
+            // full device height, maybe 16:9 at phone
+            previewWidth = screenSize.y * sensorWidth / sensorHeight;
+            previewHeight = screenSize.y;
+        } else {
+            // full device width, maybe 4:3 at phone
+            previewWidth = screenSize.x;
+            previewHeight = screenSize.x * sensorHeight / sensorWidth;
+        }
+        return new Size(previewWidth, previewHeight);
     }
 
     private SurfaceHolder.Callback mSurfaceHolderCallback = new SurfaceHolder.Callback() {
 
         public void surfaceCreated(SurfaceHolder holder) {
             Log.e(TAG, "surface create done");
-            mSurfaceHolder = holder;
-            mPreviewSurface = mSurfaceHolder.getSurface();
+            mPreviewSurfaceHolder = holder;
+            mPreviewSurface = mPreviewSurfaceHolder.getSurface();
             startPreview();
         }
 
