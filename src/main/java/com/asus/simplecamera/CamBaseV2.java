@@ -17,7 +17,6 @@ import android.util.Size;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
-import android.view.ViewGroup;
 import android.widget.LinearLayout;
 
 import java.util.ArrayList;
@@ -128,20 +127,21 @@ public class CamBaseV2 {
     }
 
     private void createSurfaceView(LinearLayout rootLayout) {
-        mPreviewSize = getPreviewSize();
         mPreviewSurfaceView = new SurfaceView(mApp);
-        mPreviewSurfaceView.setLayoutParams(new ViewGroup.LayoutParams(mPreviewSize.getWidth(), mPreviewSize.getHeight()));
+        LinearLayout.LayoutParams layoutParams = getPreviewLayoutParams();
+        mPreviewSurfaceView.setLayoutParams(layoutParams);
         mPreviewSurfaceHolder = mPreviewSurfaceView.getHolder();
         mPreviewSurfaceHolder.addCallback(mSurfaceHolderCallback);
         rootLayout.addView(mPreviewSurfaceView);
     }
 
-    private Size getPreviewSize() {
+    private LinearLayout.LayoutParams getPreviewLayoutParams() {
         Point screenSize = new Point();
         mApp.getWindowManager().getDefaultDisplay().getSize(screenSize);
         Rect activeArea = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
         int sensorOrientation = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
         int sensorWidth, sensorHeight, previewWidth, previewHeight;
+        // Make sensor's orientation same as screen.
         switch (sensorOrientation) {
             case 90:
             case 180:
@@ -158,6 +158,7 @@ public class CamBaseV2 {
         Log.i(TAG, "Sensor Orientation angle:" + sensorOrientation);
         Log.i(TAG, "Sensor Width/Height : " + sensorWidth + "/" + sensorHeight);
         Log.i(TAG, "Screen Width/Height : " + screenSize.x + "/" + screenSize.y);
+        // Preview's View size must same as sensor ratio.
         if (mIsFullDeviceHeight) {
             // full device height, maybe 16:9 at phone
             previewWidth = screenSize.y * sensorWidth / sensorHeight;
@@ -167,7 +168,13 @@ public class CamBaseV2 {
             previewWidth = screenSize.x;
             previewHeight = screenSize.x * sensorHeight / sensorWidth;
         }
-        return new Size(previewWidth, previewHeight);
+        // Set margin to center at screen.
+        LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(previewWidth, previewHeight);
+        int widthMargin = (previewWidth - screenSize.x) / 2;
+        int heightMargin = (previewHeight - screenSize.y) / 2;
+        layoutParams.leftMargin = -widthMargin;
+        layoutParams.topMargin = -heightMargin;
+        return layoutParams;
     }
 
     private SurfaceHolder.Callback mSurfaceHolderCallback = new SurfaceHolder.Callback() {
