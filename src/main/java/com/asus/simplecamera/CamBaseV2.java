@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.graphics.Point;
 import android.graphics.Rect;
+import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
@@ -15,8 +16,7 @@ import android.os.HandlerThread;
 import android.util.Log;
 import android.util.Size;
 import android.view.Surface;
-import android.view.SurfaceHolder;
-import android.view.SurfaceView;
+import android.view.TextureView;
 import android.widget.LinearLayout;
 
 import java.util.ArrayList;
@@ -41,8 +41,8 @@ public class CamBaseV2 {
     private boolean mIsPreviewing = false;
     private LinearLayout mRootView = null;
     private Size mPreviewSize = null;
-    private SurfaceView mPreviewSurfaceView = null;
-    private SurfaceHolder mPreviewSurfaceHolder = null;
+    private TextureView mPreviewSurfaceView = null;
+    private SurfaceTexture mPreviewSurfaceTexture = null;
     private boolean mIsFullDeviceHeight = true;
 
     public CamBaseV2(Activity app, LinearLayout rootView) {
@@ -103,7 +103,7 @@ public class CamBaseV2 {
     private void releaseSurfaceView() {
         if (mPreviewSurface != null) {
             mRootView.removeView(mPreviewSurfaceView);
-            mPreviewSurfaceHolder = null;
+            mPreviewSurfaceTexture = null;
             mPreviewSurface = null;
         }
     }
@@ -127,11 +127,10 @@ public class CamBaseV2 {
     }
 
     private void createSurfaceView(LinearLayout rootLayout) {
-        mPreviewSurfaceView = new SurfaceView(mApp);
+        mPreviewSurfaceView = new TextureView(mApp);
         LinearLayout.LayoutParams layoutParams = getPreviewLayoutParams();
         mPreviewSurfaceView.setLayoutParams(layoutParams);
-        mPreviewSurfaceHolder = mPreviewSurfaceView.getHolder();
-        mPreviewSurfaceHolder.addCallback(mSurfaceHolderCallback);
+        mPreviewSurfaceView.setSurfaceTextureListener(mSurfaceextureListener);
         rootLayout.addView(mPreviewSurfaceView);
     }
 
@@ -177,21 +176,24 @@ public class CamBaseV2 {
         return layoutParams;
     }
 
-    private SurfaceHolder.Callback mSurfaceHolderCallback = new SurfaceHolder.Callback() {
+    private TextureView.SurfaceTextureListener mSurfaceextureListener = new TextureView.SurfaceTextureListener() {
+        public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) {
 
-        public void surfaceCreated(SurfaceHolder holder) {
-            Log.e(TAG, "surface create done");
-            mPreviewSurfaceHolder = holder;
-            mPreviewSurface = mPreviewSurfaceHolder.getSurface();
+        }
+
+        public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
+            return false;
+        }
+
+        public void onSurfaceTextureUpdated(SurfaceTexture surface) {
+
+        }
+
+        public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
+            mPreviewSurfaceTexture = surface;
+            mPreviewSurface = new Surface(mPreviewSurfaceTexture);
             startPreview();
         }
-
-        public void surfaceDestroyed(SurfaceHolder holder) {
-        }
-
-        public void surfaceChanged(SurfaceHolder holder, int format, int w, int h) {
-        }
-
     };
 
     private CameraDevice.StateCallback mCameraDeviceStateCallback = new CameraDevice.StateCallback() {
