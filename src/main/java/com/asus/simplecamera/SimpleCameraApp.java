@@ -11,7 +11,7 @@ import android.widget.LinearLayout;
 import com.asus.simplecamera2_v1.R;
 
 public class SimpleCameraApp extends Activity {
-    private static String TAG = "SimpleCameraApp";
+    public static final String TAG = "SimpleCameraApp";
 
     //    private Camera mCamera = null;
     private CamBaseV2 mCamBase = null;

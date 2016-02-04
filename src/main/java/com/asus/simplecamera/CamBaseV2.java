@@ -16,7 +16,6 @@ import android.os.HandlerThread;
 import android.util.Log;
 import android.util.Size;
 import android.view.Surface;
-import android.view.TextureView;
 import android.widget.LinearLayout;
 
 import java.util.ArrayList;
@@ -27,7 +26,7 @@ import java.util.List;
  */
 public class CamBaseV2 {
 
-    private static String TAG = "SimpleCameraApp";
+    private static String TAG = SimpleCameraApp.TAG;
     private Activity mApp = null;
     private CameraDevice mCamera = null;
     private CameraManager mCameraManager = null;
@@ -41,9 +40,9 @@ public class CamBaseV2 {
     private boolean mIsPreviewing = false;
     private LinearLayout mRootView = null;
     private Size mPreviewSize = null;
-    private TextureView mPreviewSurfaceView = null;
+    private PreviewGLSurfaceView mPreviewSurfaceView = null;
     private SurfaceTexture mPreviewSurfaceTexture = null;
-    private boolean mIsFullDeviceHeight = true;
+    private boolean mIsFullDeviceHeight = false;
 
     public CamBaseV2(Activity app, LinearLayout rootView) {
         mApp = app;
@@ -127,8 +126,9 @@ public class CamBaseV2 {
     }
 
     private void createSurfaceView(LinearLayout rootLayout) {
-        mPreviewSurfaceView = new TextureView(mApp);
         LinearLayout.LayoutParams layoutParams = getPreviewLayoutParams();
+        mPreviewSize = new Size(layoutParams.width, layoutParams.height);
+        mPreviewSurfaceView = new PreviewGLSurfaceView(mApp, mPreviewSize);
         mPreviewSurfaceView.setLayoutParams(layoutParams);
         mPreviewSurfaceView.setSurfaceTextureListener(mSurfaceextureListener);
         rootLayout.addView(mPreviewSurfaceView);
@@ -176,20 +176,8 @@ public class CamBaseV2 {
         return layoutParams;
     }
 
-    private TextureView.SurfaceTextureListener mSurfaceextureListener = new TextureView.SurfaceTextureListener() {
-        public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) {
-
-        }
-
-        public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
-            return false;
-        }
-
-        public void onSurfaceTextureUpdated(SurfaceTexture surface) {
-
-        }
-
-        public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
+    private PreviewGLSurfaceView.SurfaceTextureListener mSurfaceextureListener = new PreviewGLSurfaceView.SurfaceTextureListener() {
+        public void onSurfaceTextureAvailable(SurfaceTexture surface) {
             mPreviewSurfaceTexture = surface;
             mPreviewSurface = new Surface(mPreviewSurfaceTexture);
             startPreview();
