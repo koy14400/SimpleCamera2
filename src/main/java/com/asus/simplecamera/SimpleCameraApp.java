@@ -5,7 +5,9 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
+import android.view.View;
 import android.view.WindowManager;
+import android.widget.Button;
 import android.widget.LinearLayout;
 
 import com.asus.simplecamera2_v3.R;
@@ -16,6 +18,7 @@ public class SimpleCameraApp extends Activity {
     //    private Camera mCamera = null;
     private CamBaseV2 mCamBase = null;
     private LinearLayout mRootView = null;
+    private Button mCaptureButton = null;
 
     /**
      * Called when the activity is first created.
@@ -30,6 +33,8 @@ public class SimpleCameraApp extends Activity {
         // make screen always on
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         mRootView = (LinearLayout) findViewById(R.id.root_view);
+        mCaptureButton = (Button) findViewById(R.id.button);
+        mCaptureButton.setOnClickListener(mCaptureButtonClickListener);
         mCamBase = new CamBaseV2(this, mRootView);
     }
 
@@ -53,4 +58,10 @@ public class SimpleCameraApp extends Activity {
     protected void onDestroy() {
         super.onDestroy();
     }
+
+    View.OnClickListener mCaptureButtonClickListener = new View.OnClickListener() {
+        public void onClick(View v) {
+            mCamBase.takePicture();
+        }
+    };
 }
