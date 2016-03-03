@@ -5,7 +5,7 @@ android {
     buildToolsVersion "19.1.0"
 
     defaultConfig {
-        applicationId "com.asus.simplecamera2_v1"
+        applicationId "com.asus.simplecamera2_v3"
         minSdkVersion 21
         targetSdkVersion 21
         compileOptions {

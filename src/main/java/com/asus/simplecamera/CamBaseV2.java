@@ -42,7 +42,7 @@ public class CamBaseV2 {
     private Size mPreviewSize = null;
     private PreviewGLSurfaceView mPreviewSurfaceView = null;
     private SurfaceTexture mPreviewSurfaceTexture = null;
-    private boolean mIsFullDeviceHeight = false;
+    private boolean mIsFullDeviceHeight = true;
 
     public CamBaseV2(Activity app, LinearLayout rootView) {
         mApp = app;

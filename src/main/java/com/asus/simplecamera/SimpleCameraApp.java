@@ -8,7 +8,7 @@ import android.view.SurfaceView;
 import android.view.WindowManager;
 import android.widget.LinearLayout;
 
-import com.asus.simplecamera2_v1.R;
+import com.asus.simplecamera2_v3.R;
 
 public class SimpleCameraApp extends Activity {
     public static final String TAG = "SimpleCameraApp";
