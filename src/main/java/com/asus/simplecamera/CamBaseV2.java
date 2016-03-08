@@ -24,6 +24,7 @@ import android.os.HandlerThread;
 import android.util.Log;
 import android.util.Size;
 import android.view.Surface;
+import android.view.ViewGroup;
 import android.widget.LinearLayout;
 
 import java.io.File;
@@ -50,10 +51,6 @@ public class CamBaseV2 {
     private Surface mPreviewSurface = null;
     private boolean mIsPreviewing = false;
     private LinearLayout mRootView = null;
-    private Size mPreviewSize = null;
-    private PreviewGLSurfaceView mPreviewSurfaceView = null;
-    private SurfaceTexture mPreviewSurfaceTexture = null;
-    private boolean mIsFullDeviceHeight = true;
     private ImageReader mPictureImageReader;
     private final static int PICTURE_FORMAT = ImageFormat.JPEG;
 
@@ -114,9 +111,6 @@ public class CamBaseV2 {
 
     private void releaseSurfaceView() {
         if (mPreviewSurface != null) {
-//            mRootView.removeView(mPreviewSurfaceView);
-            mRootView.removeAllViews();
-            mPreviewSurfaceTexture = null;
             mPreviewSurface = null;
         }
     }
@@ -129,7 +123,7 @@ public class CamBaseV2 {
 
             // Because camera2.0 only can control view size.
             // So we need to dynamic create view to fit sensor size.
-            createSurfaceView(mRootView);
+//            createSurfaceView(mRootView);
             Log.e(TAG, "camera open begin");
             mCameraManager.openCamera(mCameraId[0], mCameraDeviceStateCallback, mCameraHandler);
         } catch (CameraAccessException e) {
@@ -139,72 +133,12 @@ public class CamBaseV2 {
         }
     }
 
-    private void createSurfaceView(LinearLayout rootLayout) {
-        LinearLayout.LayoutParams layoutParams = getPreviewLayoutParams();
-        mPreviewSize = new Size(layoutParams.width, layoutParams.height);
-        mPreviewSurfaceView = new PreviewGLSurfaceView(mApp, mPreviewSize);
-        mPreviewSurfaceView.setLayoutParams(layoutParams);
-        mPreviewSurfaceView.setSurfaceTextureListener(mSurfaceextureListener);
-        rootLayout.addView(mPreviewSurfaceView);
-    }
-
-    private LinearLayout.LayoutParams getPreviewLayoutParams() {
-        Point screenSize = new Point();
-        mApp.getWindowManager().getDefaultDisplay().getSize(screenSize);
-        Rect activeArea = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
-        int sensorOrientation = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
-        int sensorWidth, sensorHeight, previewWidth, previewHeight;
-        // Make sensor's orientation same as screen.
-        switch (sensorOrientation) {
-            case 90:
-            case 180:
-                sensorWidth = activeArea.height();
-                sensorHeight = activeArea.width();
-                break;
-            case 270:
-            case 0:
-            default:
-                sensorWidth = activeArea.width();
-                sensorHeight = activeArea.height();
-                break;
-        }
-        Log.i(TAG, "Sensor Orientation angle:" + sensorOrientation);
-        Log.i(TAG, "Sensor Width/Height : " + sensorWidth + "/" + sensorHeight);
-        Log.i(TAG, "Screen Width/Height : " + screenSize.x + "/" + screenSize.y);
-        // Preview's View size must same as sensor ratio.
-        if (mIsFullDeviceHeight) {
-            // full device height, maybe 16:9 at phone
-            previewWidth = screenSize.y * sensorWidth / sensorHeight;
-            previewHeight = screenSize.y;
-        } else {
-            // full device width, maybe 4:3 at phone
-            previewWidth = screenSize.x;
-            previewHeight = screenSize.x * sensorHeight / sensorWidth;
-        }
-        // Set margin to center at screen.
-        LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(previewWidth, previewHeight);
-        int widthMargin = (previewWidth - screenSize.x) / 2;
-        int heightMargin = (previewHeight - screenSize.y) / 2;
-        layoutParams.leftMargin = -widthMargin;
-        layoutParams.topMargin = -heightMargin;
-        Log.i(TAG, "LayoutMargin left/top : " + -widthMargin + "/" + -heightMargin);
-        return layoutParams;
-    }
-
-    private PreviewGLSurfaceView.SurfaceTextureListener mSurfaceextureListener = new PreviewGLSurfaceView.SurfaceTextureListener() {
-        public void onSurfaceTextureAvailable(SurfaceTexture surface) {
-            mPreviewSurfaceTexture = surface;
-            mPreviewSurface = new Surface(mPreviewSurfaceTexture);
-            startPreview();
-        }
-    };
-
     private CameraDevice.StateCallback mCameraDeviceStateCallback = new CameraDevice.StateCallback() {
         @Override
         public void onOpened(CameraDevice camera) {
             Log.e(TAG, "camera open done");
             mCamera = camera;
-            startPreview();
+            startPreview(null);
         }
 
         @Override
@@ -227,8 +161,11 @@ public class CamBaseV2 {
      * Maybe need to sync Camera and SurfaceView.
      * Maybe need to create SurfaceView after get camera size.
      */
-    private void startPreview() {
+    public void startPreview(Surface previewSurface) {
         Log.e(TAG, "Try start preview.");
+        if (previewSurface!= null) {
+            mPreviewSurface = previewSurface;
+        }
         if (mCamera != null && mPreviewSurface != null && !mIsPreviewing) {
             mIsPreviewing = true;
             List<Surface> outputSurfaces = new ArrayList<Surface>(1);
