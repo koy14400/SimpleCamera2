@@ -295,19 +295,23 @@ public class CamBaseV2 {
     }
 
     public void takePicture() {
-        Log.i(TAG, "takePicture, Start.");
-        CaptureRequest.Builder builder = getCaptureBuilder();
-        if (builder != null) {
-            try {
-                mPreviewSession.capture(builder.build(), mCaptureCallback, mCameraHandler);
-            } catch (CameraAccessException e) {
-                e.printStackTrace();
-                Log.e(TAG, "takePicture, fail at capture.");
+        if(mPreviewSession != null && mIsPreviewing) {
+            Log.i(TAG, "takePicture, Start.");
+            CaptureRequest.Builder builder = getCaptureBuilder();
+            if (builder != null) {
+                try {
+                    mPreviewSession.capture(builder.build(), mCaptureCallback, mCameraHandler);
+                } catch (CameraAccessException e) {
+                    e.printStackTrace();
+                    Log.e(TAG, "takePicture, fail at capture.");
+                }
+            } else {
+                Log.e(TAG, "takePicture, fail at builder is null.");
             }
+            Log.i(TAG, "takePicture, Done.");
         } else {
-            Log.e(TAG, "takePicture, fail at builder is null.");
+            Log.w(TAG, "takePicture, Capture fail::preview not ready.");
         }
-        Log.i(TAG, "takePicture, Done.");
     }
 
     private CaptureRequest.Builder getCaptureBuilder() {

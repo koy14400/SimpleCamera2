@@ -50,12 +50,19 @@ public abstract class CamPreviewV2 {
         try {
             mCameraId = mCameraManager.getCameraIdList();
             mCameraCharacteristics = mCameraManager.getCameraCharacteristics(mCameraId[0]);
+
+            // Because camera2.0 only can control view size.
+            // So we need to dynamic create view to fit sensor size.
             createSurfaceView();
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
     }
 
+    /**
+     * Because camera2.0 only can control view size.
+     * So we need to dynamic create view to fit sensor size.
+     */
     protected abstract void createSurfaceView();
     public View getView() {
         return mPreviewSurfaceView;
