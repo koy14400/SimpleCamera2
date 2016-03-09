@@ -39,7 +39,9 @@ public class SimpleCameraApp extends Activity {
         // make screen always on
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         mRootView = (LinearLayout) findViewById(R.id.root_view);
-        mCaptureButton = (Button) findViewById(R.id.button);
+        mCaptureButton = (Button) findViewById(R.id.NextPreviewType);
+        mCaptureButton.setOnClickListener(mCaptureButtonClickListener);
+        mCaptureButton = (Button) findViewById(R.id.Capture);
         mCaptureButton.setOnClickListener(mCaptureButtonClickListener);
         mCamBase = new CamBaseV2(this, mRootView);
         mCamPreview = getPreviewView(mViewType);
@@ -70,8 +72,14 @@ public class SimpleCameraApp extends Activity {
 
     View.OnClickListener mCaptureButtonClickListener = new View.OnClickListener() {
         public void onClick(View v) {
-//            mCamBase.takePicture();
-            changeNextPreviewViewType();
+            switch (v.getId()){
+                case R.id.Capture:
+                    mCamBase.takePicture();
+                    break;
+                case R.id.NextPreviewType:
+                    changeNextPreviewViewType();
+                    break;
+            }
         }
     };
 
