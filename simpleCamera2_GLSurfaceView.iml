@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<module external.linked.project.id=":simpleCamera2_GLSurfaceView" external.linked.project.path="$MODULE_DIR$" external.root.project.path="$MODULE_DIR$/.." external.system.id="GRADLE" external.system.module.group="SimpleCameraSet" external.system.module.version="unspecified" type="JAVA_MODULE" version="4">
+<module external.linked.project.id=":SimpleCamera2_GLSurfaceView" external.linked.project.path="$MODULE_DIR$" external.root.project.path="$MODULE_DIR$/.." external.system.id="GRADLE" external.system.module.group="SimpleCamera2_Dev" external.system.module.version="unspecified" type="JAVA_MODULE" version="4">
   <component name="FacetManager">
     <facet type="android-gradle" name="Android-Gradle">
       <configuration>
-        <option name="GRADLE_PROJECT_PATH" value=":simpleCamera2_GLSurfaceView" />
+        <option name="GRADLE_PROJECT_PATH" value=":SimpleCamera2_GLSurfaceView" />
       </configuration>
     </facet>
     <facet type="android" name="Android">

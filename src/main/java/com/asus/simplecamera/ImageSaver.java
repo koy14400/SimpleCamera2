@@ -25,7 +25,7 @@ import java.nio.ByteBuffer;
 public class ImageSaver implements Runnable {
 
     private static String TAG = SimpleCameraApp.TAG;
-    private final Image mImage;
+    private Image mImage;
     private final File mPicPath;
 
     /**
@@ -39,7 +39,7 @@ public class ImageSaver implements Runnable {
     private final CameraCharacteristics mCharacteristics;
     private Context mContext;
 
-    ImageSaver(Image image, File picPath, CaptureResult result, CameraCharacteristics characteristics, Context context) {
+    public ImageSaver(Image image, File picPath, CaptureResult result, CameraCharacteristics characteristics, Context context) {
         mImage = image;
         mPicPath = picPath;
         mCaptureResult = result;
@@ -47,8 +47,15 @@ public class ImageSaver implements Runnable {
         mContext = context;
     }
 
-//    @Override
+    public void setImage(Image image){
+        mImage = image;
+    }
+
     public void run() {
+        if (mImage == null) {
+            Log.e(TAG, "ImageSaver, image is null. Store fail.");
+            return;
+        }
         int format = mImage.getFormat();
         boolean success = false;
 
