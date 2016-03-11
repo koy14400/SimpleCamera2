@@ -1,8 +1,5 @@
 package com.asus.simplecamera.cambase2;
 
-import android.content.Context;
-import android.graphics.ImageFormat;
-import android.graphics.PixelFormat;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
@@ -10,22 +7,13 @@ import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CaptureFailure;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.TotalCaptureResult;
-import android.hardware.camera2.params.StreamConfigurationMap;
-import android.media.Image;
 import android.media.ImageReader;
-import android.os.Environment;
 import android.os.Handler;
 import android.util.Log;
-import android.util.Size;
 import android.view.Surface;
 
-import com.asus.simplecamera.ImageSaver;
 import com.asus.simplecamera.SimpleCameraApp;
 
-import java.io.File;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 
 /**
@@ -33,36 +21,35 @@ import java.util.List;
  */
 public class CamSessionV2 {
     private static String TAG = SimpleCameraApp.TAG;
-    private static final int PICTURE_FORMAT = ImageFormat.JPEG;
 
     // Constructor
     private CameraDevice mCamera = null;
     private Handler mCameraHandler = null;
     private CameraCharacteristics mCameraCharacteristics = null;
-    private Context mContext = null;
 
 
-    private Surface mPreviewSurface = null;
     private CameraCaptureSession mSession = null;
-    private ImageReader mPictureImageReader = null;
+    private Surface mPreviewSurface = null;
+    private ImageReader mSessionImageReader = null;
+    private int mMaxRequestNumber = 1;
     private boolean mIsPreviewing = false;
-    private int mImageReaderNumber = 0;
-    private int mImageReaderFormat = ImageFormat.UNKNOWN;
+    private boolean mIsNeedTakePicture = false;
 
-    public CamSessionV2(Context context, CameraDevice camera, Handler handler, CameraCharacteristics cameraCharacteristics) {
-        mContext = context;
+    public CamSessionV2(CameraDevice camera, Handler handler, CameraCharacteristics cameraCharacteristics) {
         mCamera = camera;
         mCameraHandler = handler;
         mCameraCharacteristics = cameraCharacteristics;
     }
 
+    /**
+     * Release all resource. Not use again.
+     */
     public void release() {
         if (mSession != null) {
             mSession.close();
         }
         mPreviewSurface = null;
         mIsPreviewing = false;
-        mContext = null;
         mCamera = null;
         mCameraHandler = null;
         mCameraCharacteristics = null;
@@ -72,23 +59,18 @@ public class CamSessionV2 {
      * Maybe need to sync Camera and SurfaceView.
      * Maybe need to create SurfaceView after get camera size.
      */
-    public void startPreview(Surface previewSurface, int outputCount, int targetFormat) {
+    public void startPreview(Surface previewSurface, PostProcess postProcess) {
         Log.e(TAG, "Try start preview.");
         if (previewSurface != null) {
             mPreviewSurface = previewSurface;
         }
         if (mCamera != null && mPreviewSurface != null) {
-            int totalOutputNumber = 1 + outputCount;
-            List<Surface> outputSurfaces = new ArrayList<Surface>(totalOutputNumber);
-            outputSurfaces.add(mPreviewSurface);
-            for (int i = 0; i < outputCount; i++) {
-                mImageReaderNumber = outputCount;
-                mImageReaderFormat = targetFormat;
-                outputSurfaces = setCaptureImageReader(outputSurfaces, targetFormat);
-            }
+            List<Surface> outputSurfaces = postProcess.createOutputSurfaceList(mPreviewSurface, mCameraCharacteristics);
+            mSessionImageReader = postProcess.getPictureImageReader();
+            mMaxRequestNumber = postProcess.getMaxRequestNumber();
             try {
                 Log.e(TAG, "createCaptureSession begin");
-                mCamera.createCaptureSession(outputSurfaces, mSessionCallback, mCameraHandler);
+                mCamera.createCaptureSession(outputSurfaces, new CustomCaptureSessionCallback(postProcess), mCameraHandler);
             } catch (CameraAccessException e) {
                 e.printStackTrace();
             }
@@ -99,18 +81,44 @@ public class CamSessionV2 {
         }
     }
 
-    private CameraCaptureSession.StateCallback mSessionCallback = new CameraCaptureSession.StateCallback() {
+    /**
+     * Try take picture.
+     * If postProcess not match current session, take picture after create new session.
+     * Maybe fail at ImageReader not enough. Depend on postProcess's mMaxRequestNumber.
+     *
+     * @param postProcess
+     */
+    public void takePicture(PostProcess postProcess) {
+        if (mCamera == null) return;
+        if (postProcess.isImageReaderMatch(mSessionImageReader)) {
+            useCurrentSessionTakePicture(postProcess);
+        } else {
+            useNewSessionTakePicture(postProcess);
+        }
+    }
+
+    /**
+     * Tell session we can accept a new request from CamBaseV2.
+     */
+    public void finishOneRequest() {
+        mMaxRequestNumber++;
+    }
+
+    private class CustomCaptureSessionCallback extends CameraCaptureSession.StateCallback {
+        PostProcess postProcess;
+
+        public CustomCaptureSessionCallback(PostProcess Process) {
+            postProcess = Process;
+        }
+
         @Override
         public void onConfigured(CameraCaptureSession session) {
             Log.i(TAG, "mSessionCallback, onConfigured done");
             mSession = session;
-            CaptureRequest.Builder previewBuilder = getPreviewBuilder();
-            CaptureRequest request = previewBuilder.build();
-            try {
-                Log.e(TAG, "setRepeatingRequest begin");
-                mSession.setRepeatingRequest(request, null, mCameraHandler);
-            } catch (CameraAccessException e) {
-                e.printStackTrace();
+            useCurrentSessionStartPreview(postProcess);
+            if (mIsNeedTakePicture) {
+                mIsNeedTakePicture = false;
+                useCurrentSessionTakePicture(postProcess);
             }
         }
 
@@ -125,162 +133,80 @@ public class CamSessionV2 {
             mSession = null;
             Log.i(TAG, "mSessionCallback, onClosed done");
         }
-    };
+    }
 
-    private CaptureRequest.Builder getPreviewBuilder() {
-        CaptureRequest.Builder previewBuilder = null;
+
+    private void useCurrentSessionStartPreview(PostProcess postProcess) {
+        CaptureRequest.Builder previewBuilder = postProcess.getPreviewBuilder(mCamera);
         try {
-            previewBuilder = mCamera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-            previewBuilder.addTarget(mPreviewSurface);
+            Log.e(TAG, "setRepeatingRequest begin");
+            mSession.setRepeatingRequest(previewBuilder.build(), null, mCameraHandler);
         } catch (CameraAccessException e) {
-            Log.e(TAG, "getPreviewBuilder, preview builder create fail.");
             e.printStackTrace();
         }
-        return previewBuilder;
     }
 
-    private List<Surface> setCaptureImageReader(List<Surface> outputSurface, int targetFormat) {
-        int picWidth = 0, picHeight = 0;
-        StreamConfigurationMap map = mCameraCharacteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
-        if (map != null) {
-            int[] colorFormat = map.getOutputFormats();
-            for (int format : colorFormat) {
-                Log.d(TAG, "Camera 0" + ": Supports color format " + formatToText(format));
-                android.util.Size[] mColorSizes = map.getOutputSizes(format);
-                for (android.util.Size s : mColorSizes)
-                    Log.d(TAG, "Camera 0" + ": color size W/H:" + s.getWidth() + "/" + s.getHeight());
-                if (format == targetFormat) {
-                    Size size = mColorSizes[0];
-                    picWidth = size.getWidth();
-                    picHeight = size.getHeight();
-                }
+    private void useCurrentSessionTakePicture(PostProcess postProcess) {
+        if (!isEnoughRequest()) return;
+        CaptureRequest.Builder builder = postProcess.getCaptureBuilder(mCamera, mPreviewSurface, mSessionImageReader);
+        builder.setTag(postProcess);
+        if (builder != null) {
+            try {
+                mSession.capture(builder.build(), mCaptureCallback, mCameraHandler);
+            } catch (CameraAccessException e) {
+                e.printStackTrace();
+                Log.e(TAG, "takePicture, fail at capture.");
             }
-        }
-        Log.d(TAG, "Camera 0, format:" + targetFormat + ": picture size W/H :" + picWidth + "/" + picHeight);
-        if (picWidth <= 0 || picHeight <= 0) {
-            Log.e(TAG, "Camera 0" + ": picture size have some problem, need check!!!");
-            return outputSurface;
-        }
-        mPictureImageReader = ImageReader.newInstance(picWidth, picHeight, targetFormat, 5);
-        mPictureImageReader.setOnImageAvailableListener(mOnImageAvailableListener, mCameraHandler);
-        outputSurface.add(mPictureImageReader.getSurface());
-        return outputSurface;
-    }
-
-    public static String formatToText(int format) {
-        switch (format) {
-            case ImageFormat.YUY2:
-                return "YUY2";
-            case ImageFormat.JPEG:
-                return "JPEG";
-            case ImageFormat.NV21:
-                return "NV21";
-            case ImageFormat.YV12:
-                return "YV12";
-            case PixelFormat.RGBA_8888:
-                return "RGBA_8888";
-        }
-        return "<unknown format>: " + Integer.toHexString(format);
-    }
-
-    private ImageReader.OnImageAvailableListener mOnImageAvailableListener = new ImageReader.OnImageAvailableListener() {
-        public void onImageAvailable(ImageReader reader) {
-            Log.i(TAG, "takePicture, process ImageReader start.");
-            Image image = reader.acquireLatestImage();
-            File outputPath = getOutputMediaFile();
-            ImageSaver imageSaver = new ImageSaver(image, outputPath, null, mCameraCharacteristics, mContext);
-            mCameraHandler.post(imageSaver);
-            Log.i(TAG, "takePicture, process ImageReader Done.");
-        }
-    };
-
-    private File getOutputMediaFile() {
-
-        File path = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "SimpleCamera2");
-        path.mkdir();
-        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
-        String photoPath = null;
-
-        switch (PICTURE_FORMAT) {
-            case ImageFormat.JPEG:
-                photoPath = path.getPath() + File.separator + "IMG_" + timeStamp + ".jpg";
-                break;
-            case ImageFormat.RAW_SENSOR:
-                photoPath = path.getPath() + File.separator + "RAW_" + timeStamp + ".dng";
-                break;
-        }
-
-        Log.i(TAG, photoPath);
-        File photo = new File(photoPath);
-
-        return photo;
-    }
-
-    public void takePicture(PostProcess postProcess) {
-        if (mCamera == null) return;
-        int captureCount = postProcess.getmCaptureCount();
-        int captureFormat = postProcess.getCaptureFormat();
-        if (isNeedReCreateSession(captureCount, captureFormat)) {
-            startPreview(mPreviewSurface, captureCount, captureFormat);
         } else {
-            CaptureRequest.Builder builder = getCaptureBuilder();
-            if (builder != null) {
-                try {
-                    mSession.capture(builder.build(), mCaptureCallback, mCameraHandler);
-                } catch (CameraAccessException e) {
-                    e.printStackTrace();
-                    Log.e(TAG, "takePicture, fail at capture.");
-                }
-            } else {
-                Log.e(TAG, "takePicture, fail at builder is null.");
-            }
+            Log.e(TAG, "takePicture, fail at builder is null.");
         }
     }
 
-    public boolean isNeedReCreateSession(int captureCount, int captureFormat) {
-        if (mSession != null && mImageReaderNumber == captureCount && mImageReaderFormat == captureFormat) {
+    /**
+     * Try create a new session.
+     * If current session can't use, we must create a new session before take picture.
+     * @param postProcess
+     */
+    private void useNewSessionTakePicture(PostProcess postProcess) {
+        // Some bug, preview will rotate 90 angle.
+        releaseOldSession();
+        mIsNeedTakePicture = true;
+        startPreview(mPreviewSurface, postProcess);
+    }
+
+    private boolean isEnoughRequest() {
+        if (mMaxRequestNumber <= 0) {
+            Log.e(TAG, "No request can use.");
             return false;
         }
+        mMaxRequestNumber--;
         return true;
     }
 
-    public void takePicture() {
-        if (mCamera != null && mSession != null) {
-            Log.i(TAG, "takePicture, Start.");
-            CaptureRequest.Builder builder = getCaptureBuilder();
-            if (builder != null) {
-                try {
-                    mSession.capture(builder.build(), mCaptureCallback, mCameraHandler);
-                } catch (CameraAccessException e) {
-                    e.printStackTrace();
-                    Log.e(TAG, "takePicture, fail at capture.");
-                }
-            } else {
-                Log.e(TAG, "takePicture, fail at builder is null.");
+    private void releaseOldSession() {
+        if (mSession != null) {
+            try {
+                mSession.abortCaptures();
+                mSessionImageReader.close();
+                mSessionImageReader = null;
+            } catch (CameraAccessException e) {
+                e.printStackTrace();
             }
-            Log.i(TAG, "takePicture, Done.");
-        } else {
-            Log.w(TAG, "takePicture, Capture fail::preview not ready.");
         }
-    }
-
-    private CaptureRequest.Builder getCaptureBuilder() {
-        try {
-            CaptureRequest.Builder builder = mCamera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
-            builder.addTarget(mPreviewSurface);
-            builder.addTarget(mPictureImageReader.getSurface());
-            return builder;
-        } catch (CameraAccessException e) {
-            e.printStackTrace();
-        }
-        Log.e(TAG, "Create CaptureBuilder fail. need check.");
-        return null;
     }
 
     private CameraCaptureSession.CaptureCallback mCaptureCallback = new CameraCaptureSession.CaptureCallback() {
+
         @Override
         public void onCaptureCompleted(CameraCaptureSession session, CaptureRequest request, TotalCaptureResult result) {
             super.onCaptureCompleted(session, request, result);
+            //Maybe can postProcess at here.
+//            PostProcess p = (PostProcess)request.getTag();
+//            Image image = null;
+//            while(image == null) {
+//                image = mSessionImageReader.acquireNextImage();
+//            }
+//            p.saveImage(image);
         }
 
         @Override

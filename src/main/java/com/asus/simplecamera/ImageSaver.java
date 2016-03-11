@@ -47,7 +47,7 @@ public class ImageSaver implements Runnable {
         mContext = context;
     }
 
-    public void setImage(Image image){
+    public void setImage(Image image) {
         mImage = image;
     }
 
@@ -63,19 +63,22 @@ public class ImageSaver implements Runnable {
             case ImageFormat.JPEG: {
                 Log.i(TAG, "ImageSaver, store image start. Format:JPEG.");
                 ByteBuffer buffer = mImage.getPlanes()[0].getBuffer();
-                byte[] bytes = new byte[buffer.remaining()];
-                buffer.get(bytes);
+                byte[] bytes = new byte[buffer.capacity()];
+                buffer.get(bytes, 0, buffer.capacity());
+
+//                byte[] bytes = new byte[buffer.remaining()];
+//                buffer.get(bytes);
                 FileOutputStream output = null;
 
-                Bitmap pictureTaken = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
-                Matrix matrix = new Matrix();
-                matrix.preRotate(90);
-                pictureTaken = Bitmap.createBitmap(pictureTaken, 0, 0, pictureTaken.getWidth(), pictureTaken.getHeight(), matrix, true);
+//                Bitmap pictureTaken = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+//                Matrix matrix = new Matrix();
+//                matrix.preRotate(90);
+//                pictureTaken = Bitmap.createBitmap(pictureTaken, 0, 0, pictureTaken.getWidth(), pictureTaken.getHeight(), matrix, true);
 
                 try {
                     output = new FileOutputStream(mPicPath.getPath());
-                    pictureTaken.compress(Bitmap.CompressFormat.JPEG, 50, output);
-                    pictureTaken.recycle();
+//                    pictureTaken.compress(Bitmap.CompressFormat.JPEG, 50, output);
+//                    pictureTaken.recycle();
                     output.write(bytes);
                     output.close();
                     success = true;

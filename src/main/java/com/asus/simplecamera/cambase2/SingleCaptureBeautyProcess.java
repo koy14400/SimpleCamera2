@@ -1,36 +1,21 @@
 package com.asus.simplecamera.cambase2;
 
-import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CaptureRequest;
 import android.media.Image;
 import android.os.Handler;
-import android.view.Surface;
-
-import com.asus.simplecamera.ImageSaver;
-
-import java.util.List;
 
 /**
  * Created by Tinghan_Chang on 2016/3/10.
  */
 public class SingleCaptureBeautyProcess extends PostProcess {
-    public SingleCaptureBeautyProcess(ImageSaver imageSaver, Handler saverHandler) {
-        super(imageSaver, saverHandler);
+
+    public SingleCaptureBeautyProcess(TakePictureCallback takePictureCallback, Handler imageAvailableHandler) {
+        super(takePictureCallback, imageAvailableHandler);
     }
 
     @Override
     public CaptureRequest.Builder getPreviewBuilder(CameraDevice camera) {
-        return null;
-    }
-
-    @Override
-    public CaptureRequest.Builder getCaptureBuilder(CameraDevice camera) {
-        return null;
-    }
-
-    @Override
-    public List<Surface> setCaptureImage(List<Surface> outputSurface, CameraCharacteristics cameraCharacteristics) {
         return null;
     }
 

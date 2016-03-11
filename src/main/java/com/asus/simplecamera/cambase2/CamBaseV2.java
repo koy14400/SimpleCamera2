@@ -50,30 +50,65 @@ public class CamBaseV2 {
     private HandlerThread mCameraThread = null;
     private Handler mCameraHandler = null;
     private CamSessionV2 mCamSession = null;
+    private HandlerThread mImageSaverThread = null;
+    private Handler mImageSaverHandler = null;
 
     public CamBaseV2(Activity app) {
         mApp = app;
     }
 
+    /**
+     * Initial thread.
+     * Open Camera.
+     */
     public void onActivityResume() {
         Log.e(TAG, "LifeCycle, onActivityResume");
         initCameraThread();
         openCamera();
     }
 
-    private void initCameraThread() {
-        Log.e(TAG, "init camera thread begin.");
-        mCameraThread = new HandlerThread("Camera Handler Thread");
-        mCameraThread.start();
-        mCameraHandler = new Handler(mCameraThread.getLooper());
-        Log.e(TAG, "nit camera thread done");
-    }
-
+    /**
+     * Release Camera.
+     * Release Thread.
+     */
     public void onActivityPause() {
         Log.e(TAG, "LifeCycle, onActivityPause");
         releaseCamera();
         releaseCameraThread();
         Log.e(TAG, "LifeCycle, onActivityPause done");
+    }
+
+    /**
+     * Try startPreview with previewSurface.
+     * Only success when previewSurface and camera not null.
+     * So call this function by onCameraOpened and onSurfaceReady.
+     * Init ImageReader by createPostProcess().
+     * @param previewSurface
+     */
+    public void startPreview(Surface previewSurface) {
+        Log.e(TAG, "Try start preview.");
+        mCamSession.startPreview(previewSurface, createPostProcess());
+    }
+
+    /**
+     * Try take picture by createPostProcess().
+     * Maybe fail at ImageReader not enough. Depend on postProcess's mMaxRequestNumber.
+     */
+    public void takePicture() {
+        mCamSession.takePicture(createPostProcess());
+    }
+
+    private void initCameraThread() {
+        Log.e(TAG, "Init camera thread begin.");
+        mCameraThread = new HandlerThread("Camera Handler Thread");
+        mCameraThread.start();
+        mCameraHandler = new Handler(mCameraThread.getLooper());
+        Log.e(TAG, "Init camera thread done");
+        Log.e(TAG, "Init ImageSaver thread begin.");
+        mImageSaverThread = new HandlerThread("ImageSaver Handler Thread");
+        mImageSaverThread.start();
+        mImageSaverHandler = new Handler(mCameraThread.getLooper());
+        Log.e(TAG, "Init ImageSaver thread done");
     }
 
     private void releaseCamera() {
@@ -91,6 +126,13 @@ public class CamBaseV2 {
         }
         if (mCameraHandler != null) {
             mCameraHandler = null;
+        }
+        if (mImageSaverThread != null) {
+            mImageSaverThread.interrupt();
+            mImageSaverThread = null;
+        }
+        if (mImageSaverHandler != null) {
+            mImageSaverHandler = null;
         }
     }
 
@@ -116,7 +158,7 @@ public class CamBaseV2 {
         public void onOpened(CameraDevice camera) {
             Log.e(TAG, "CameraDevice ID:" + camera.getId() + " is onOpened.");
             mCamera = camera;
-            mCamSession = new CamSessionV2(mApp.getBaseContext(), mCamera, mCameraHandler, mCameraCharacteristics);
+            mCamSession = new CamSessionV2(mCamera, mCameraHandler, mCameraCharacteristics);
             startPreview(null);
         }
 
@@ -139,33 +181,40 @@ public class CamBaseV2 {
         }
     };
 
-    public void startPreview(Surface previewSurface) {
-        Log.e(TAG, "Try start preview.");
-        mCamSession.startPreview(previewSurface, 1, ImageFormat.JPEG);
+    /**
+     * Override by child class to choose PostProcess.
+     * @return
+     */
+    protected PostProcess createPostProcess() {
+        PostProcess postProcess = new SingleCaptureNormalProcess(mTakePictureCallback, mImageSaverHandler);
+        return postProcess;
     }
 
-    public void takePicture() {
-        File outputPath = getOutputMediaFile();
-        ImageSaver imageSaver = new ImageSaver(null, outputPath, null, mCameraCharacteristics, mApp.getBaseContext());
-        PostProcess postProcess = new SingleCaptureNormalProcess(imageSaver, mCameraHandler);
-        mCamSession.takePicture(postProcess);
-//        mCamSession.takePicture();
-    }
+    private PostProcess.TakePictureCallback mTakePictureCallback = new PostProcess.TakePictureCallback() {
+        public void onImageReady(Image image) {
+            File outputPath = getOutputMediaFile(image.getFormat());
+            ImageSaver imageSaver = new ImageSaver(image, outputPath, null, mCameraCharacteristics, mApp.getBaseContext());
+            mImageSaverHandler.post(imageSaver);
+            mCamSession.finishOneRequest();
+        }
+    };
 
-    private static final int PICTURE_FORMAT = ImageFormat.JPEG;
-    private File getOutputMediaFile() {
+    private File getOutputMediaFile(int pictureFormat) {
 
         File path = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "SimpleCamera2");
         path.mkdir();
         String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
-        String photoPath = null;
+        String photoPath;
 
-        switch (PICTURE_FORMAT) {
+        switch (pictureFormat) {
             case ImageFormat.JPEG:
                 photoPath = path.getPath() + File.separator + "IMG_" + timeStamp + ".jpg";
                 break;
             case ImageFormat.RAW_SENSOR:
                 photoPath = path.getPath() + File.separator + "RAW_" + timeStamp + ".dng";
+                break;
+            default:
+                photoPath = path.getPath() + File.separator + "IMG_" + timeStamp + ".jpg";
                 break;
         }
 

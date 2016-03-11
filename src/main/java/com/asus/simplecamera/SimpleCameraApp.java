@@ -73,7 +73,7 @@ public class SimpleCameraApp extends Activity {
 
     View.OnClickListener mCaptureButtonClickListener = new View.OnClickListener() {
         public void onClick(View v) {
-            switch (v.getId()){
+            switch (v.getId()) {
                 case R.id.Capture:
                     mCamBase.takePicture();
                     break;
