@@ -25,7 +25,7 @@ import java.nio.ByteBuffer;
 public class ImageSaver implements Runnable {
 
     private static String TAG = SimpleCameraApp.TAG;
-    private final Image mImage;
+    private Image mImage;
     private final File mPicPath;
 
     /**
@@ -39,7 +39,7 @@ public class ImageSaver implements Runnable {
     private final CameraCharacteristics mCharacteristics;
     private Context mContext;
 
-    ImageSaver(Image image, File picPath, CaptureResult result, CameraCharacteristics characteristics, Context context) {
+    public ImageSaver(Image image, File picPath, CaptureResult result, CameraCharacteristics characteristics, Context context) {
         mImage = image;
         mPicPath = picPath;
         mCaptureResult = result;
@@ -47,8 +47,15 @@ public class ImageSaver implements Runnable {
         mContext = context;
     }
 
-//    @Override
+    public void setImage(Image image) {
+        mImage = image;
+    }
+
     public void run() {
+        if (mImage == null) {
+            Log.e(TAG, "ImageSaver, image is null. Store fail.");
+            return;
+        }
         int format = mImage.getFormat();
         boolean success = false;
 
@@ -56,19 +63,22 @@ public class ImageSaver implements Runnable {
             case ImageFormat.JPEG: {
                 Log.i(TAG, "ImageSaver, store image start. Format:JPEG.");
                 ByteBuffer buffer = mImage.getPlanes()[0].getBuffer();
-                byte[] bytes = new byte[buffer.remaining()];
-                buffer.get(bytes);
+                byte[] bytes = new byte[buffer.capacity()];
+                buffer.get(bytes, 0, buffer.capacity());
+
+//                byte[] bytes = new byte[buffer.remaining()];
+//                buffer.get(bytes);
                 FileOutputStream output = null;
 
-                Bitmap pictureTaken = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
-                Matrix matrix = new Matrix();
-                matrix.preRotate(90);
-                pictureTaken = Bitmap.createBitmap(pictureTaken, 0, 0, pictureTaken.getWidth(), pictureTaken.getHeight(), matrix, true);
+//                Bitmap pictureTaken = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+//                Matrix matrix = new Matrix();
+//                matrix.preRotate(90);
+//                pictureTaken = Bitmap.createBitmap(pictureTaken, 0, 0, pictureTaken.getWidth(), pictureTaken.getHeight(), matrix, true);
 
                 try {
                     output = new FileOutputStream(mPicPath.getPath());
-                    pictureTaken.compress(Bitmap.CompressFormat.JPEG, 50, output);
-                    pictureTaken.recycle();
+//                    pictureTaken.compress(Bitmap.CompressFormat.JPEG, 50, output);
+//                    pictureTaken.recycle();
                     output.write(bytes);
                     output.close();
                     success = true;

@@ -9,6 +9,7 @@ import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.LinearLayout;
 
+import com.asus.simplecamera.cambase2.CamBaseV2;
 import com.asus.simplecamera.previewtype.CamGLPreviewV2;
 import com.asus.simplecamera.previewtype.CamPreviewV2;
 import com.asus.simplecamera.previewtype.CamPreviewV2.PreviewViewType;
@@ -43,7 +44,7 @@ public class SimpleCameraApp extends Activity {
         mCaptureButton.setOnClickListener(mCaptureButtonClickListener);
         mCaptureButton = (Button) findViewById(R.id.Capture);
         mCaptureButton.setOnClickListener(mCaptureButtonClickListener);
-        mCamBase = new CamBaseV2(this, mRootView);
+        mCamBase = new CamBaseV2(this);
         mCamPreview = getPreviewView(mViewType);
     }
 
@@ -72,7 +73,7 @@ public class SimpleCameraApp extends Activity {
 
     View.OnClickListener mCaptureButtonClickListener = new View.OnClickListener() {
         public void onClick(View v) {
-            switch (v.getId()){
+            switch (v.getId()) {
                 case R.id.Capture:
                     mCamBase.takePicture();
                     break;
