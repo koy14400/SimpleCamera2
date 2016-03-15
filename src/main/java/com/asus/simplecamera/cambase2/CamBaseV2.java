@@ -52,6 +52,8 @@ public class CamBaseV2 {
     private CamSessionV2 mCamSession = null;
     private HandlerThread mImageSaverThread = null;
     private Handler mImageSaverHandler = null;
+    private HandlerThread mImageAvailableThread = null;
+    private Handler mImageAvailableHandler = null;
 
     public CamBaseV2(Activity app) {
         mApp = app;
@@ -83,10 +85,11 @@ public class CamBaseV2 {
      * Only success when previewSurface and camera not null.
      * So call this function by onCameraOpened and onSurfaceReady.
      * Init ImageReader by createPostProcess().
+     *
      * @param previewSurface
      */
     public void startPreview(Surface previewSurface) {
-        Log.e(TAG, "Try start preview.");
+        Log.e(TAG, "CamBaseV2, Try start preview.");
         mCamSession.startPreview(previewSurface, createPostProcess());
     }
 
@@ -107,7 +110,12 @@ public class CamBaseV2 {
         Log.e(TAG, "Init ImageSaver thread begin.");
         mImageSaverThread = new HandlerThread("ImageSaver Handler Thread");
         mImageSaverThread.start();
-        mImageSaverHandler = new Handler(mCameraThread.getLooper());
+        mImageSaverHandler = new Handler(mImageSaverThread.getLooper());
+        Log.e(TAG, "Init ImageSaver thread done");
+        Log.e(TAG, "Init ImageSaver thread begin.");
+        mImageAvailableThread = new HandlerThread("ImageSaver Handler Thread");
+        mImageAvailableThread.start();
+        mImageAvailableHandler = new Handler(mImageAvailableThread.getLooper());
         Log.e(TAG, "Init ImageSaver thread done");
     }
 
@@ -134,6 +142,13 @@ public class CamBaseV2 {
         if (mImageSaverHandler != null) {
             mImageSaverHandler = null;
         }
+        if (mImageAvailableThread != null) {
+            mImageAvailableThread.interrupt();
+            mImageAvailableThread = null;
+        }
+        if (mImageAvailableHandler != null) {
+            mImageAvailableHandler = null;
+        }
     }
 
     private void openCamera() {
@@ -143,7 +158,18 @@ public class CamBaseV2 {
             mCameraId = mCameraManager.getCameraIdList();
             String targetID = mCameraId[BACK_CAMERA_ID];
             mCameraCharacteristics = mCameraManager.getCameraCharacteristics(targetID);
-
+            int level = mCameraCharacteristics.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL);
+            switch (level) {
+                case CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LIMITED:
+                    Log.i(TAG, "camera ID:" + targetID + ", is LIMITED support.");
+                    break;
+                case CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL:
+                    Log.i(TAG, "camera ID:" + targetID + ", is FULL support.");
+                    break;
+                case CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LEGACY:
+                    Log.i(TAG, "camera ID:" + targetID + ", is LEGACY support.");
+                    break;
+            }
             Log.e(TAG, "camera open begin");
             mCameraManager.openCamera(targetID, mCameraDeviceStateCallback, mCameraHandler);
         } catch (CameraAccessException e) {
@@ -158,7 +184,7 @@ public class CamBaseV2 {
         public void onOpened(CameraDevice camera) {
             Log.e(TAG, "CameraDevice ID:" + camera.getId() + " is onOpened.");
             mCamera = camera;
-            mCamSession = new CamSessionV2(mCamera, mCameraHandler, mCameraCharacteristics);
+            mCamSession = new CamSessionV2(mCamera, mCameraHandler, mImageAvailableHandler, mCameraCharacteristics, mTakePictureCallback);
             startPreview(null);
         }
 
@@ -181,16 +207,42 @@ public class CamBaseV2 {
         }
     };
 
+    // For test
+    private int count = 0;
+
     /**
      * Override by child class to choose PostProcess.
+     *
      * @return
      */
     protected PostProcess createPostProcess() {
-        PostProcess postProcess = new SingleCaptureNormalProcess(mTakePictureCallback, mImageSaverHandler);
+        PostProcess postProcess;
+        Log.i(TAG, "CamBaseV2, Use Single low light process.");
+        postProcess = new SingleCaptureLowLightProcess();
+        // For test, first use low loght(4 image), second use normal(1 image)
+//        switch (count % 2) {
+//            case 0:
+//                Log.i(TAG, "CamBaseV2, Use Single Normal process.");
+//                postProcess = new SingleCaptureNormalProcess();
+//                break;
+//            case 1:
+//                Log.i(TAG, "CamBaseV2, Use Single low light process.");
+//                postProcess = new SingleCaptureLowLightProcess();
+//                break;
+////            case 2:
+////                Log.i(TAG, "CamBaseV2, Use Burst Normal process.");
+////                postProcess = new BurstCaptureNormalProcess();
+////                break;
+//            default:
+//                Log.i(TAG, "CamBaseV2, Use default process.");
+//                postProcess = new BurstCaptureNormalProcess();
+//
+//        }
+//        count++;
         return postProcess;
     }
 
-    private PostProcess.TakePictureCallback mTakePictureCallback = new PostProcess.TakePictureCallback() {
+    private CamSessionV2.TakePictureCallback mTakePictureCallback = new CamSessionV2.TakePictureCallback() {
         public void onImageReady(Image image) {
             File outputPath = getOutputMediaFile(image.getFormat());
             ImageSaver imageSaver = new ImageSaver(image, outputPath, null, mCameraCharacteristics, mApp.getBaseContext());
@@ -199,11 +251,21 @@ public class CamBaseV2 {
         }
     };
 
+    String lastName = "AAA";
+    String tempName = "_A";
+
     private File getOutputMediaFile(int pictureFormat) {
 
         File path = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "SimpleCamera2");
         path.mkdir();
         String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+        if (timeStamp.equalsIgnoreCase(lastName)) {
+            tempName = tempName + "_A";
+            timeStamp = timeStamp + tempName;
+        } else {
+            tempName = "";
+            lastName = timeStamp;
+        }
         String photoPath;
 
         switch (pictureFormat) {

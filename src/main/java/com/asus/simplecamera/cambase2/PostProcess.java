@@ -9,7 +9,6 @@ import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.Image;
 import android.media.ImageReader;
-import android.os.Handler;
 import android.util.Log;
 import android.util.Size;
 import android.view.Surface;
@@ -24,59 +23,61 @@ import java.util.List;
  * Created by Tinghan_Chang on 2016/3/10.
  */
 public abstract class PostProcess {
-    public interface TakePictureCallback {
-        public void onImageReady(Image image);
-    }
 
     public class OptInfo {
         public boolean isApplyBeauty = false;
         public boolean isApplyOptimal = false;
         public boolean isApplyLowLight = false;
-        public boolean isApplyNighSence = false;
+        public boolean isApplyNighSense = false;
     }
 
     protected static String TAG = SimpleCameraApp.TAG;
-    protected TakePictureCallback mTakePictureCallback = null;
-    protected Handler mImageAvailableHandler = null;
     protected int mCaptureCount = 1;
     protected int mCaptureFormat = ImageFormat.JPEG;
     protected int mCaptureWidth = -1;
+    protected int mBurstCount = 1;
     protected OptInfo mOptInfo = null;
     protected Surface mPreviewSurface = null;
     protected ImageReader mPictureImageReader = null;
     protected int mMaxRequestNumber = 3;
 
-    public PostProcess(TakePictureCallback takePictureCallback, Handler imageAvailableHandler) {
-        mTakePictureCallback = takePictureCallback;
-        mImageAvailableHandler = imageAvailableHandler;
-
-        // init global variable.
-        mMaxRequestNumber = 3;
-        mCaptureCount = 1;
-        mCaptureFormat = ImageFormat.JPEG;
-        mCaptureWidth = -1; // -1 mean not care picture size.
+    public PostProcess() {
 
         mOptInfo = new OptInfo();
         initOptionInfo();
-        processOptInfo();
 
     }
 
     /**
+     * For Child class override and implement.
+     */
+    protected abstract void initOptionInfo();
+
+    /**
+     * For Child class override and implement.
+     */
+    public abstract Image postProcess(Image[] image);
+
+    /**
      * If this postProcess can't use current session.
      * Maybe we need to create a new session fit this postProcess.
+     *
      * @param sessionImageReader
      * @return
      */
     public boolean isImageReaderMatch(ImageReader sessionImageReader) {
         if (sessionImageReader != null &&
                 sessionImageReader.getImageFormat() == mCaptureFormat &&
-                sessionImageReader.getMaxImages() == mCaptureCount * mMaxRequestNumber &&
+                sessionImageReader.getMaxImages() >= mCaptureCount * mMaxRequestNumber &&
                 (mCaptureWidth <= 0 || sessionImageReader.getWidth() == mCaptureWidth)) {
             mPictureImageReader = sessionImageReader;
             return true;
         }
         return false;
+    }
+
+    public int getBurstCount(){
+        return mBurstCount;
     }
 
     public int getMaxRequestNumber() {
@@ -87,17 +88,29 @@ public abstract class PostProcess {
         return mPictureImageReader;
     }
 
+    /**
+     * Initial session's total Preview and ImageReader surface.
+     *
+     * @param previewSurface
+     * @param cameraCharacteristics
+     * @return
+     */
     public List<Surface> createOutputSurfaceList(Surface previewSurface, CameraCharacteristics cameraCharacteristics) {
         mPreviewSurface = previewSurface;
         List<Surface> outputSurface = new ArrayList<Surface>(mCaptureCount + 1);
         outputSurface.add(previewSurface);
-        for (int i = 0; i < mCaptureCount; i++) {
-            setCaptureImageReader(outputSurface, mCaptureFormat, mCaptureCount * mMaxRequestNumber, mCaptureWidth, cameraCharacteristics);
-        }
+        setCaptureImageReader(outputSurface, mCaptureFormat, mCaptureCount * mMaxRequestNumber, mCaptureWidth, cameraCharacteristics);
         return outputSurface;
     }
 
-
+    /**
+     * This is default preview builder.
+     * Maybe child class need override.
+     * Maybe Time rewind need this to implement.
+     *
+     * @param camera
+     * @return
+     */
     public CaptureRequest.Builder getPreviewBuilder(CameraDevice camera) {
         CaptureRequest.Builder previewBuilder = null;
         try {
@@ -110,74 +123,31 @@ public abstract class PostProcess {
         return previewBuilder;
     }
 
-    public CaptureRequest.Builder getCaptureBuilder(CameraDevice camera, Surface previewSurface, ImageReader pictureImageReader) {
+    /**
+     * @param camera
+     * @param previewSurface
+     * @param pictureImageReader
+     * @return
+     */
+    public List<CaptureRequest> getCaptureBuilder(CameraDevice camera, Surface previewSurface, ImageReader pictureImageReader) {
+        // TODO: return Builder[] to set HDR
         try {
-            pictureImageReader.setOnImageAvailableListener(getImageAvailableListener(), mImageAvailableHandler);
+            List<CaptureRequest> list = new ArrayList<CaptureRequest>(mCaptureCount*mBurstCount);
             CaptureRequest.Builder builder = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
             builder.addTarget(previewSurface);
             builder.addTarget(pictureImageReader.getSurface());
-            return builder;
+            for (int i = 0; i < mBurstCount; i++) {
+                for (int j = 0; j < mCaptureCount; j++) {
+                    // TODO: HDR should implement 3 builder at child class.
+                    list.add(builder.build());
+                }
+            }
+            return list;
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
         Log.e(TAG, "Create CaptureBuilder fail. need check.");
         return null;
-    }
-
-    /**
-     * For Child class override and implement.
-     */
-    protected abstract void initOptionInfo();
-
-    /**
-     * For Child class override and implement.
-     */
-    protected abstract Image postProcess(OptInfo optInfo, Image image);
-
-    protected void processOptInfo() {
-        if (mOptInfo != null) {
-            // Init Capture Count.
-            if (mOptInfo.isApplyLowLight) {
-                mCaptureCount = 4;
-            } else {
-                mCaptureCount = 1;
-            }
-
-            // Init Capture Format.
-            if (mOptInfo.isApplyNighSence || mOptInfo.isApplyLowLight || mOptInfo.isApplyOptimal || mOptInfo.isApplyBeauty) {
-                mCaptureFormat = ImageFormat.YUV_420_888;
-            } else {
-                mCaptureFormat = ImageFormat.JPEG;
-            }
-        }
-    }
-
-
-    protected ImageReader.OnImageAvailableListener getImageAvailableListener() {
-        return new CustomImageAvailableListener(mOptInfo);
-    }
-
-    protected class CustomImageAvailableListener implements ImageReader.OnImageAvailableListener {
-
-        private OptInfo mOptInfo;
-
-        public CustomImageAvailableListener(OptInfo optInfo) {
-            mOptInfo = optInfo;
-        }
-
-        public void onImageAvailable(ImageReader reader) {
-            Log.d(TAG, "Capture, onImageAvailable.");
-            Image image = reader.acquireNextImage();
-            postProcess(mOptInfo, image);
-            if (mTakePictureCallback != null)
-                mTakePictureCallback.onImageReady(image);
-        }
-    }
-
-    public void saveImage(Image image) {
-        postProcess(mOptInfo, image);
-        if (mTakePictureCallback != null)
-            mTakePictureCallback.onImageReady(image);
     }
 
     protected List<Surface> setCaptureImageReader(List<Surface> outputSurface, int targetFormat, int targetCount, int targetWidth, CameraCharacteristics cameraCharacteristics) {
@@ -186,7 +156,7 @@ public abstract class PostProcess {
         if (map != null) {
             int[] colorFormat = map.getOutputFormats();
             for (int format : colorFormat) {
-                Log.d(TAG, "Camera 0" + ": Supports color format " + formatToText(format));
+                Log.i(TAG, "Camera 0" + ": Supports color format " + formatToText(format));
                 android.util.Size[] mColorSizes = map.getOutputSizes(format);
                 for (android.util.Size s : mColorSizes)
                     Log.d(TAG, "Camera 0" + ": color size W/H:" + s.getWidth() + "/" + s.getHeight());
@@ -206,7 +176,7 @@ public abstract class PostProcess {
                 }
             }
         }
-        Log.d(TAG, "Camera 0, format:" + targetFormat + ": picture size W/H :" + picWidth + "/" + picHeight);
+        Log.i(TAG, "Camera 0, format:" + formatToText(targetFormat) + ": picture size W/H :" + picWidth + "/" + picHeight);
         if (picWidth <= 0 || picHeight <= 0) {
             Log.e(TAG, "Camera 0" + ": picture size have some problem, need check!!!");
             return outputSurface;
@@ -218,12 +188,20 @@ public abstract class PostProcess {
 
     protected static String formatToText(int format) {
         switch (format) {
-            case ImageFormat.YUY2:
-                return "YUY2";
+            case ImageFormat.RAW10:
+                return "RAW10";
+            case ImageFormat.RAW_SENSOR:
+                return "RAW_SENSOR";
             case ImageFormat.JPEG:
                 return "JPEG";
+            case ImageFormat.NV16:
+                return "NV16";
             case ImageFormat.NV21:
                 return "NV21";
+            case ImageFormat.YUV_420_888:
+                return "YUV_420_888";
+            case ImageFormat.YUY2:
+                return "YUY2";
             case ImageFormat.YV12:
                 return "YV12";
             case PixelFormat.RGBA_8888:
