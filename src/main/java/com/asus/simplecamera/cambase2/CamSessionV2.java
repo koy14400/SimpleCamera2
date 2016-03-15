@@ -7,6 +7,7 @@ import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CaptureFailure;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.TotalCaptureResult;
+import android.media.Image;
 import android.media.ImageReader;
 import android.os.Handler;
 import android.util.Log;
@@ -15,16 +16,25 @@ import android.view.Surface;
 import com.asus.simplecamera.SimpleCameraApp;
 
 import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.ArrayBlockingQueue;
 
 /**
  * Created by Tinghan_Chang on 2016/3/9.
  */
 public class CamSessionV2 {
+    public interface TakePictureCallback {
+        // Should be jpeg callback
+        public void onImageReady(Image image);
+    }
+
     private static String TAG = SimpleCameraApp.TAG;
 
     // Constructor
     private CameraDevice mCamera = null;
     private Handler mCameraHandler = null;
+    private Handler mImageAvailableHandler = null;
+    private TakePictureCallback mTakePictureCallback = null;
     private CameraCharacteristics mCameraCharacteristics = null;
 
 
@@ -35,9 +45,14 @@ public class CamSessionV2 {
     private boolean mIsPreviewing = false;
     private boolean mIsNeedTakePicture = false;
 
-    public CamSessionV2(CameraDevice camera, Handler handler, CameraCharacteristics cameraCharacteristics) {
+    private PostProcess mCurrentPostProcess;
+    private Queue<PostProcess> mQueue;
+
+    public CamSessionV2(CameraDevice camera, Handler cameraHandler, Handler imageHandler, CameraCharacteristics cameraCharacteristics, TakePictureCallback callback) {
         mCamera = camera;
-        mCameraHandler = handler;
+        mCameraHandler = cameraHandler;
+        mImageAvailableHandler = imageHandler;
+        mTakePictureCallback = callback;
         mCameraCharacteristics = cameraCharacteristics;
     }
 
@@ -60,14 +75,16 @@ public class CamSessionV2 {
      * Maybe need to create SurfaceView after get camera size.
      */
     public void startPreview(Surface previewSurface, PostProcess postProcess) {
-        Log.e(TAG, "Try start preview.");
+        Log.e(TAG, "Session, Try start preview.");
         if (previewSurface != null) {
             mPreviewSurface = previewSurface;
         }
         if (mCamera != null && mPreviewSurface != null) {
             List<Surface> outputSurfaces = postProcess.createOutputSurfaceList(mPreviewSurface, mCameraCharacteristics);
             mSessionImageReader = postProcess.getPictureImageReader();
+            mSessionImageReader.setOnImageAvailableListener(new CustomImageAvailableListener(), mImageAvailableHandler);
             mMaxRequestNumber = postProcess.getMaxRequestNumber();
+            mQueue = new ArrayBlockingQueue<PostProcess>(mMaxRequestNumber);
             try {
                 Log.e(TAG, "createCaptureSession begin");
                 mCamera.createCaptureSession(outputSurfaces, new CustomCaptureSessionCallback(postProcess), mCameraHandler);
@@ -98,7 +115,7 @@ public class CamSessionV2 {
     }
 
     /**
-     * Tell session we can accept a new request from CamBaseV2.
+     * Tell session we can accept a new take picture request from CamBaseV2.
      */
     public void finishOneRequest() {
         mMaxRequestNumber++;
@@ -148,27 +165,34 @@ public class CamSessionV2 {
 
     private void useCurrentSessionTakePicture(PostProcess postProcess) {
         if (!isEnoughRequest()) return;
-        CaptureRequest.Builder builder = postProcess.getCaptureBuilder(mCamera, mPreviewSurface, mSessionImageReader);
-        builder.setTag(postProcess);
-        if (builder != null) {
-            try {
-                mSession.capture(builder.build(), mCaptureCallback, mCameraHandler);
-            } catch (CameraAccessException e) {
-                e.printStackTrace();
-                Log.e(TAG, "takePicture, fail at capture.");
+        List<CaptureRequest> list = postProcess.getCaptureBuilder(mCamera, mPreviewSurface, mSessionImageReader);
+        try {
+            if (list != null && list.size() > 1) {
+                mSession.captureBurst(list, mCaptureCallback, mCameraHandler);
+                mQueue.offer(postProcess);
+                Log.e(TAG, "takePicture, use captureBurst. CaptureRequest Number:" + list.size());
+            } else if (list != null && list.size() == 1) {
+                mSession.capture(list.get(0), mCaptureCallback, mCameraHandler);
+                mQueue.offer(postProcess);
+                Log.e(TAG, "takePicture, use capture.");
+            } else {
+                Log.e(TAG, "takePicture, fail at builder is null.");
             }
-        } else {
-            Log.e(TAG, "takePicture, fail at builder is null.");
+        } catch (CameraAccessException e) {
+            e.printStackTrace();
+            Log.e(TAG, "takePicture, fail at capture.");
         }
+
     }
 
     /**
      * Try create a new session.
      * If current session can't use, we must create a new session before take picture.
+     *
      * @param postProcess
      */
     private void useNewSessionTakePicture(PostProcess postProcess) {
-        // Some bug, preview will rotate 90 angle.
+        // Some bug, preview will rotate 90 angle at old device(legacy).
         releaseOldSession();
         mIsNeedTakePicture = true;
         startPreview(mPreviewSurface, postProcess);
@@ -180,6 +204,7 @@ public class CamSessionV2 {
             return false;
         }
         mMaxRequestNumber--;
+        Log.e(TAG, "Rest of Request count:" + mMaxRequestNumber);
         return true;
     }
 
@@ -200,13 +225,6 @@ public class CamSessionV2 {
         @Override
         public void onCaptureCompleted(CameraCaptureSession session, CaptureRequest request, TotalCaptureResult result) {
             super.onCaptureCompleted(session, request, result);
-            //Maybe can postProcess at here.
-//            PostProcess p = (PostProcess)request.getTag();
-//            Image image = null;
-//            while(image == null) {
-//                image = mSessionImageReader.acquireNextImage();
-//            }
-//            p.saveImage(image);
         }
 
         @Override
@@ -214,4 +232,62 @@ public class CamSessionV2 {
             super.onCaptureFailed(session, request, failure);
         }
     };
+
+    protected class CustomImageAvailableListener implements ImageReader.OnImageAvailableListener {
+
+        private int imageCount = 0;
+
+        public CustomImageAvailableListener() {
+        }
+
+        public void onImageAvailable(ImageReader reader) {
+            if (mCurrentPostProcess == null) {
+                mCurrentPostProcess = mQueue.poll();
+            }
+            if (mCurrentPostProcess != null) {
+                Log.d(TAG, "Capture, onImageAvailable.");
+                if (!isGetEnoughImage()) return;
+                // TODO: shutter callback
+                Log.d(TAG, "Capture, onImageAvailable. Get total Images:" + imageCount);
+                Image[] imageList = getImages(reader);
+                // Do post process. Should close unused image.
+                Image resultImage = mCurrentPostProcess.postProcess(imageList);
+                // TODO: JpegCallback
+                if (mTakePictureCallback != null) {
+                    mTakePictureCallback.onImageReady(resultImage);
+                }
+                if (isBurstDone())
+                    resetState();
+            } else {
+                Log.w(TAG, "Capture, onImageAvailable. CurrentPostProcess is null.");
+            }
+        }
+
+        private boolean isBurstDone() {
+            return (imageCount / mCurrentPostProcess.mCaptureCount) >= mCurrentPostProcess.getBurstCount();
+        }
+
+        private void resetState() {
+            finishOneRequest();
+            imageCount = 0;
+            mCurrentPostProcess = null;
+        }
+
+        private Image[] getImages(ImageReader reader) {
+            Image[] imageList = new Image[imageCount];
+            for (int i = 0; i < imageCount; i++) {
+                imageList[i] = reader.acquireNextImage();
+            }
+            return imageList;
+        }
+
+        private boolean isGetEnoughImage() {
+            imageCount++;
+            if (imageCount < mCurrentPostProcess.mCaptureCount) {
+                Log.d(TAG, "Capture, onImageAvailable. Not enough Images. Current/Total:" + imageCount + "/" + mCurrentPostProcess.mCaptureCount);
+                return false;
+            }
+            return true;
+        }
+    }
 }

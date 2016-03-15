@@ -84,6 +84,7 @@ public class ImageSaver implements Runnable {
                     success = true;
                     Log.e(SimpleCameraApp.TAG, "Save image, Success");
                 } catch (IOException e) {
+                    Log.e(SimpleCameraApp.TAG, "Save image, exception");
                     e.printStackTrace();
                 } finally {
                     mImage.close();
