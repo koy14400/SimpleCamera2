@@ -14,6 +14,7 @@ import android.view.Surface;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
+import android.widget.Toast;
 
 import com.asus.simplecamera.SimpleCameraApp;
 
@@ -49,7 +50,14 @@ public abstract class CamPreviewV2 {
         mCameraManager = (CameraManager) mApp.getSystemService(Context.CAMERA_SERVICE);
         try {
             mCameraId = mCameraManager.getCameraIdList();
-            mCameraCharacteristics = mCameraManager.getCameraCharacteristics(mCameraId[0]);
+            if (mCameraId.length > 0) {
+                mCameraCharacteristics = mCameraManager.getCameraCharacteristics(mCameraId[0]);
+            } else {
+                Log.e(TAG, "Device not support camera.");
+                Toast.makeText(mApp, "Device not support camera.", Toast.LENGTH_SHORT).show();
+                mApp.finish();
+                return;
+            }
 
             // Because camera2.0 only can control view size.
             // So we need to dynamic create view to fit sensor size.
